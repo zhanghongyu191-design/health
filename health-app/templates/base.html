@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}体重管理{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% block chrome %}
+  <div class="topbar">
+    <h1>{% block heading %}体重管理{% endblock %}</h1>
+    <a class="logout" href="{{ url_for('logout') }}">退出</a>
+  </div>
+  {% endblock %}
+
+  <div class="wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, msg in messages %}
+        <div class="flash {{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+
+  {% block nav %}
+  <nav class="tabbar">
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active=='home' }}"><span class="ico">🏠</span>首页</a>
+    <a href="{{ url_for('weight') }}" class="{{ 'active' if active=='weight' }}"><span class="ico">⚖️</span>体重</a>
+    <a href="{{ url_for('meals') }}" class="{{ 'active' if active=='meals' }}"><span class="ico">🍱</span>三餐</a>
+    <a href="{{ url_for('exercise') }}" class="{{ 'active' if active=='exercise' }}"><span class="ico">🏃</span>运动</a>
+  </nav>
+  {% endblock %}
+</body>
+</html>

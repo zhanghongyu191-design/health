@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set active = 'home' %}
+{% block heading %}体重管理{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="date-row">
+    <span>查看日期</span>
+    <form method="get" style="margin:0">
+      <input type="date" name="date" value="{{ sel.strftime('%Y-%m-%d') }}"
+             onchange="this.form.submit()" style="width:auto">
+    </form>
+  </div>
+  <div class="summary">
+    <div class="stat">
+      <div class="num">{% if latest_weight %}{{ latest_weight.weight_kg }}<small>kg</small>{% else %}—{% endif %}</div>
+      <div class="label">体重{% if not is_today %}（截至当日）{% endif %}</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ calories_in }}<small>kcal</small></div>
+      <div class="label">摄入 · {{ meal_count }}餐</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ calories_out }}<small>kcal</small></div>
+      <div class="label">消耗 · {{ ex_count }}次</div>
+    </div>
+  </div>
+  <div class="net-line">当日净摄入 <b>{{ net }}</b> kcal（摄入 − 消耗）</div>
+</div>
+
+{% if chart_svg %}
+<div class="card">
+  <h2>体重趋势{% if weight_change is not none %}
+    · {% if weight_change < 0 %}↓ {{ -weight_change }}{% elif weight_change > 0 %}↑ {{ weight_change }}{% else %}持平{% endif %}{% if weight_change != 0 %} kg{% endif %}
+  {% endif %}</h2>
+  {{ chart_svg | safe }}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>最近 7 天</h2>
+  <ul class="list">
+    {% for r in recent %}
+    <li>
+      <div>
+        <div class="item-main">{{ r.date.strftime('%m/%d') }}
+          <span class="item-sub" style="font-weight:400">（{{ ['周一','周二','周三','周四','周五','周六','周日'][r.date.weekday()] }}）</span>
+        </div>
+        <div class="item-sub">摄入 {{ r.cin }} · 消耗 {{ r.cout }} kcal</div>
+      </div>
+      <div style="text-align:right">
+        <div class="item-main">{{ r.net }}</div>
+        <div class="item-sub">净 kcal</div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% endblock %}

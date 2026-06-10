@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% set active = 'meals' %}
+{% block heading %}三餐{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>记一餐</h2>
+  <form method="post" action="{{ url_for('meals') }}">
+    <div class="row">
+      <div>
+        <label>日期</label>
+        <input type="date" name="eaten_on" value="{{ today.strftime('%Y-%m-%d') }}">
+      </div>
+      <div>
+        <label>餐别</label>
+        <select name="meal_type">
+          <option>早餐</option><option>午餐</option><option>晚餐</option><option>加餐</option>
+        </select>
+      </div>
+    </div>
+
+    <label>常见食物（选一个会自动填入大概热量，数字可以再改）</label>
+    <select id="foodPick">
+      <option value="">— 选一个，或在下面自己输入 —</option>
+      <optgroup label="主食">
+        <option data-cal="250">米饭 一碗</option>
+        <option data-cal="220">吐司 两片</option>
+        <option data-cal="500">拉面 一碗</option>
+        <option data-cal="350">乌冬面 一碗</option>
+        <option data-cal="300">荞麦面 一碗</option>
+        <option data-cal="650">牛肉饭 普通份</option>
+        <option data-cal="700">咖喱饭 一份</option>
+        <option data-cal="700">便当 一份</option>
+        <option data-cal="240">饺子 6个</option>
+      </optgroup>
+      <optgroup label="配菜・小吃">
+        <option data-cal="40">味噌汤 一碗</option>
+        <option data-cal="80">沙拉 一份</option>
+        <option data-cal="290">炸鸡块 3-4个</option>
+        <option data-cal="80">鸡蛋 1个</option>
+      </optgroup>
+      <optgroup label="水果・饮料">
+        <option data-cal="90">香蕉 1根</option>
+        <option data-cal="110">苹果 1个</option>
+        <option data-cal="130">牛奶 200ml</option>
+        <option data-cal="140">啤酒 350ml</option>
+        <option data-cal="5">黑咖啡 1杯</option>
+      </optgroup>
+    </select>
+
+    <label>吃了什么</label>
+    <input id="foodInput" name="food" placeholder="例如：牛肉饭、味噌汤" required>
+    <label>热量 (kcal)</label>
+    <input id="calInput" type="number" name="calories" inputmode="numeric" placeholder="选上面的食物会自动填，也可手动改" required>
+    <button class="btn" type="submit">保存</button>
+  </form>
+  <p class="hint">数值只是常见分量的大概值，按你实际吃的多少调整即可。</p>
+</div>
+<div class="card">
+  <h2>记录</h2>
+  {% if items %}
+  <ul class="list">
+    {% for m in items %}
+    <li>
+      <div>
+        <div class="item-main"><span class="tag">{{ m.meal_type }}</span>{{ m.food }}</div>
+        <div class="item-sub">{{ m.eaten_on.strftime('%Y-%m-%d') }} · {{ m.calories }} kcal</div>
+      </div>
+      <div class="item-actions">
+        <form method="post" action="{{ url_for('meal_delete', meal_id=m.id) }}" style="margin:0" onsubmit="return confirm('删除？')">
+          <button class="del" type="submit">删</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">还没有记录。</div>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    var pick = document.getElementById('foodPick');
+    var food = document.getElementById('foodInput');
+    var cal = document.getElementById('calInput');
+    pick.addEventListener('change', function () {
+      var o = pick.options[pick.selectedIndex];
+      if (o && o.value) {
+        food.value = o.textContent.trim();
+        cal.value = o.getAttribute('data-cal');
+      }
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block chrome %}{% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<div class="auth">
+  <div class="brand">创建账号</div>
+  <div class="sub">每个人用各自的账号登录</div>
+  <form method="post" action="{{ url_for('register') }}">
+    <label>用户名</label>
+    <input name="username" autocomplete="username" required>
+    <label>密码</label>
+    <input type="password" name="password" autocomplete="new-password" required>
+    <button class="btn" type="submit">注册并进入</button>
+  </form>
+  <div class="switch">已经有账号？<a href="{{ url_for('login') }}">登录</a></div>
+</div>
+{% endblock %}
