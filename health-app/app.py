@@ -7,7 +7,7 @@ from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
 
-from models import db, User, WeightLog, Meal, Exercise
+from models import db, User, WeightLog, Meal, Exercise, now_jst
 
 
 def create_app():
@@ -43,19 +43,19 @@ def create_app():
     def parse_datetime(text):
         """处理 <input type=datetime-local> 的值，例如 2026-06-09T08:30"""
         if not text:
-            return datetime.now()
+            return now_jst()
         try:
             return datetime.strptime(text, "%Y-%m-%dT%H:%M")
         except ValueError:
-            return datetime.now()
+            return now_jst()
 
     def parse_date(text):
         if not text:
-            return date.today()
+            return now_jst().date()
         try:
             return datetime.strptime(text, "%Y-%m-%d").date()
         except ValueError:
-            return date.today()
+            return now_jst().date()
 
     # ========================= 注册 / 登录 / 登出 =========================
     @app.route("/register", methods=["GET", "POST"])
@@ -138,7 +138,7 @@ def create_app():
     @login_required
     def dashboard():
         uid = current_user.id
-        today = date.today()
+        today = now_jst().date()
         # 选中的日期：网址带 ?date=YYYY-MM-DD 就看那天，否则看今天
         sel = parse_date(request.args.get("date")) if request.args.get("date") else today
 
@@ -226,7 +226,7 @@ def create_app():
             .order_by(WeightLog.recorded_at.desc())
             .all()
         )
-        return render_template("weight.html", logs=logs, now=datetime.now())
+        return render_template("weight.html", logs=logs, now=now_jst())
 
     @app.route("/weight/<int:log_id>/edit", methods=["GET", "POST"])
     @login_required
@@ -285,7 +285,7 @@ def create_app():
             .order_by(Meal.eaten_on.desc(), Meal.id.desc())
             .all()
         )
-        return render_template("meals.html", items=items, today=date.today())
+        return render_template("meals.html", items=items, today=now_jst().date())
 
     @app.route("/meals/<int:meal_id>/delete", methods=["POST"])
     @login_required
@@ -333,7 +333,7 @@ def create_app():
         )
         user_weight = lw.weight_kg if lw else 60
         return render_template(
-            "exercise.html", items=items, today=date.today(), user_weight=user_weight
+            "exercise.html", items=items, today=now_jst().date(), user_weight=user_weight
         )
 
     @app.route("/exercise/<int:ex_id>/delete", methods=["POST"])
