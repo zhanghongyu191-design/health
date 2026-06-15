@@ -65,7 +65,7 @@ input, select {
 }
 input:focus, select:focus { outline: 2px solid var(--primary); border-color: var(--primary); }
 .row { display: flex; gap: 10px; }
-.row > div { flex: 1; }
+.row > div { flex: 1; min-width: 0; }  /* min-width:0 防止手机上日期/下拉框撑破右边 */
 
 .btn {
   display: inline-block; width: 100%; margin-top: 16px;
