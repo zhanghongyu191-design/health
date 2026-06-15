@@ -2,6 +2,31 @@
 {% set active = 'weight' %}
 {% block heading %}体重{% endblock %}
 {% block content %}
+{% if bmi %}
+<div class="card">
+  <h2>身体指标</h2>
+  <div class="summary">
+    <div class="stat">
+      <div class="num">{{ bmi }}</div>
+      <div class="label">BMI · {{ bmi_label }}</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ standard_weight }}<small>kg</small></div>
+      <div class="label">标准体重</div>
+    </div>
+    <div class="stat">
+      <div class="num">{% if goal_weight %}{{ goal_weight }}<small>kg</small>{% else %}—{% endif %}</div>
+      <div class="label">你的目标</div>
+    </div>
+  </div>
+  <p class="hint">BMI = 体重 ÷ 身高²。标准体重按 BMI=22 计算，仅供参考。</p>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty">填写身高后这里会显示 BMI 和标准体重。<br>请到「首页 → 我的资料」完善身高。</div>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>记录体重（kg）</h2>
   <form method="post" action="{{ url_for('weight') }}">

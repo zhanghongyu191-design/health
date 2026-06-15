@@ -9,6 +9,7 @@
     <form method="get" style="margin:0">
       <input type="date" name="date" value="{{ sel.strftime('%Y-%m-%d') }}"
              onchange="this.form.submit()" style="width:auto">
+      <input type="hidden" name="period" value="{{ period }}">
     </form>
   </div>
   <div class="summary">
@@ -28,14 +29,74 @@
   <div class="net-line">当日净摄入 <b>{{ net }}</b> kcal（摄入 − 消耗）</div>
 </div>
 
-{% if chart_svg %}
+{# 离目标差多少 #}
+{% if diff_goal is not none or diff_month is not none %}
 <div class="card">
-  <h2>体重趋势{% if weight_change is not none %}
-    · {% if weight_change < 0 %}↓ {{ -weight_change }}{% elif weight_change > 0 %}↑ {{ weight_change }}{% else %}持平{% endif %}{% if weight_change != 0 %} kg{% endif %}
-  {% endif %}</h2>
-  {{ chart_svg | safe }}
+  <h2>距离目标</h2>
+  <div class="summary">
+    {% if diff_goal is not none %}
+    <div class="stat">
+      <div class="num">{% if diff_goal > 0 %}{{ diff_goal }}{% elif diff_goal < 0 %}{{ diff_goal }}{% else %}达成{% endif %}{% if diff_goal != 0 %}<small>kg</small>{% endif %}</div>
+      <div class="label">离终极目标{% if diff_goal > 0 %}（还需减）{% elif diff_goal < 0 %}（已超过）{% endif %}</div>
+    </div>
+    {% endif %}
+    {% if diff_month is not none %}
+    <div class="stat">
+      <div class="num">{% if diff_month > 0 %}{{ diff_month }}{% elif diff_month < 0 %}{{ diff_month }}{% else %}达成{% endif %}{% if diff_month != 0 %}<small>kg</small>{% endif %}</div>
+      <div class="label">离本月目标{% if diff_month > 0 %}（还需减）{% elif diff_month < 0 %}（已超过）{% endif %}</div>
+    </div>
+    {% endif %}
+  </div>
+  {% if month_goal_outdated %}
+  <div class="net-line" style="color:var(--danger)">本月目标还是上个月设的，记得到下面更新一下 ↓</div>
+  {% endif %}
 </div>
 {% endif %}
+
+{# 体重趋势 #}
+<div class="card">
+  <div class="date-row">
+    <span>体重趋势</span>
+    <form method="get" style="margin:0">
+      <input type="hidden" name="date" value="{{ sel.strftime('%Y-%m-%d') }}">
+      <select name="period" onchange="this.form.submit()" style="width:auto">
+        <option value="week" {{ 'selected' if period=='week' }}>本周内</option>
+        <option value="month" {{ 'selected' if period=='month' }}>一个月内</option>
+        <option value="year" {{ 'selected' if period=='year' }}>一年内</option>
+      </select>
+    </form>
+  </div>
+  {% if chart_svg %}
+    {{ chart_svg | safe }}
+    {% if period == 'year' %}<p class="hint">一年视图按每月平均值显示。</p>{% endif %}
+  {% else %}
+    <div class="empty">这个时段内记录不足 2 条，多记几次就能看到趋势了。</div>
+  {% endif %}
+</div>
+
+{# 个人资料 #}
+<div class="card">
+  <h2>我的资料（随时可改）</h2>
+  <form method="post" action="{{ url_for('profile_update') }}">
+    <label>身高 (cm)</label>
+    <input type="number" step="0.1" name="height_cm" inputmode="decimal"
+           value="{{ profile.height_cm if profile.height_cm is not none else '' }}" placeholder="例如 170">
+    <div class="row">
+      <div>
+        <label>终极目标体重 (kg)</label>
+        <input type="number" step="0.1" name="goal_weight" inputmode="decimal"
+               value="{{ profile.goal_weight if profile.goal_weight is not none else '' }}">
+      </div>
+      <div>
+        <label>本月目标体重 (kg)</label>
+        <input type="number" step="0.1" name="month_goal_weight" inputmode="decimal"
+               value="{{ profile.month_goal_weight if profile.month_goal_weight is not none else '' }}">
+      </div>
+    </div>
+    <button class="btn" type="submit">保存资料</button>
+  </form>
+  <p class="hint">填了身高后，体重页会自动算 BMI 和标准体重。</p>
+</div>
 
 <div class="card">
   <h2>最近 7 天</h2>

@@ -8,24 +8,21 @@
     <label>日期</label>
     <input type="date" name="done_on" value="{{ today.strftime('%Y-%m-%d') }}">
 
-    <label>项目（选一个，填上分钟，会按你的体重自动估算消耗）</label>
-    <select id="actPick">
-      <option value="" data-met="0">— 选一个，或自己输入 —</option>
-      <option value="走路（散步）" data-met="3.0">走路（散步）</option>
-      <option value="快走" data-met="4.3">快走</option>
-      <option value="跑步" data-met="8.0">跑步</option>
-      <option value="骑自行车" data-met="6.0">骑自行车</option>
-      <option value="游泳" data-met="7.0">游泳</option>
-      <option value="爬楼梯" data-met="8.0">爬楼梯</option>
-      <option value="跳绳" data-met="11.0">跳绳</option>
-      <option value="力量训练" data-met="5.0">力量训练</option>
-      <option value="瑜伽" data-met="2.5">瑜伽</option>
-      <option value="拉伸" data-met="2.3">拉伸</option>
-      <option value="做家务・打扫" data-met="3.3">做家务・打扫</option>
-    </select>
-
-    <label>项目名称</label>
-    <input id="actInput" name="activity" placeholder="例如：跑步、走路" required>
+    <label>项目（可下拉选，也可以直接打字。选了项目+分钟会自动估算消耗）</label>
+    <input id="actInput" name="activity" list="actList" placeholder="例如：跑步、走路" required autocomplete="off">
+    <datalist id="actList">
+      <option value="走路（散步）"></option>
+      <option value="快走"></option>
+      <option value="跑步"></option>
+      <option value="骑自行车"></option>
+      <option value="游泳"></option>
+      <option value="爬楼梯"></option>
+      <option value="跳绳"></option>
+      <option value="力量训练"></option>
+      <option value="瑜伽"></option>
+      <option value="拉伸"></option>
+      <option value="做家务・打扫"></option>
+    </datalist>
     <div class="row">
       <div>
         <label>时长 (分钟)</label>
@@ -33,12 +30,12 @@
       </div>
       <div>
         <label>消耗 (kcal)</label>
-        <input id="calInput" type="number" name="calories_burned" inputmode="numeric" placeholder="选项目+分钟会自动算" required>
+        <input id="calInput" type="number" name="calories_burned" inputmode="numeric" placeholder="选常见项目+分钟会自动算" required>
       </div>
     </div>
     <button class="btn" type="submit">保存</button>
   </form>
-  <p class="hint">按你最新体重 {{ user_weight }} kg 估算，是大概值，可手动改。</p>
+  <p class="hint">按你最新体重 {{ user_weight }} kg 估算，是大概值，可手动改。打字输入的自定义项目需要自己填消耗。</p>
 </div>
 <div class="card">
   <h2>记录</h2>
@@ -66,23 +63,24 @@
 <script>
   (function () {
     var weight = {{ user_weight }};
-    var pick = document.getElementById('actPick');
+    var METS = {
+      "走路（散步）": 3.0, "快走": 4.3, "跑步": 8.0, "骑自行车": 6.0,
+      "游泳": 7.0, "爬楼梯": 8.0, "跳绳": 11.0, "力量训练": 5.0,
+      "瑜伽": 2.5, "拉伸": 2.3, "做家务・打扫": 3.3
+    };
     var act = document.getElementById('actInput');
     var min = document.getElementById('minInput');
     var cal = document.getElementById('calInput');
     function recalc() {
-      var o = pick.options[pick.selectedIndex];
-      var met = o ? parseFloat(o.getAttribute('data-met')) : 0;
+      var met = METS[act.value.trim()];   // 只有常见项目才有 MET
       var m = parseFloat(min.value);
-      if (met > 0 && m > 0) {
+      if (met && m > 0) {
         // 消耗(kcal) = MET × 体重(kg) × 时长(小时)
         cal.value = Math.round(met * weight * (m / 60));
       }
     }
-    pick.addEventListener('change', function () {
-      if (pick.value) { act.value = pick.value; }
-      recalc();
-    });
+    act.addEventListener('input', recalc);
+    act.addEventListener('change', recalc);
     min.addEventListener('input', recalc);
   })();
 </script>
