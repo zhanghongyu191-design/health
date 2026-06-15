@@ -64,3 +64,13 @@ class Exercise(db.Model):
     activity = db.Column(db.String(100), nullable=False)    # 例如：跑步、走路
     minutes = db.Column(db.Integer, nullable=False)
     calories_burned = db.Column(db.Integer, nullable=False) # 千卡 kcal
+
+
+class Profile(db.Model):
+    """个人资料：每个用户一份。存身高、终极目标体重、本月目标体重。"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=False)
+    height_cm = db.Column(db.Float)            # 身高，厘米
+    goal_weight = db.Column(db.Float)          # 终极目标体重 kg
+    month_goal_weight = db.Column(db.Float)    # 本月目标体重 kg
+    month_goal_ym = db.Column(db.String(7))    # 本月目标是哪个月设的，如 "2026-06"

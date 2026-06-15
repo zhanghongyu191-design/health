@@ -7,7 +7,7 @@ from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
 
-from models import db, User, WeightLog, Meal, Exercise, now_jst
+from models import db, User, WeightLog, Meal, Exercise, Profile, now_jst
 
 
 def create_app():
@@ -99,21 +99,38 @@ def create_app():
         return redirect(url_for("login"))
 
     # ============================== 首页小结 ==============================
-    def build_weight_chart(logs):
-        """用纯 SVG 画体重折线图（不依赖任何外部库，离线也能显示）。
-        logs 需按时间从早到晚排好。少于 2 个点就不画。"""
-        pts = [(l.recorded_at, l.weight_kg) for l in logs]
-        if len(pts) < 2:
+    def build_weight_chart(points, goals):
+        """纯 SVG 折线图。
+        points: [(label, weight), ...] 已按时间排好，label 是 x 轴两端的文字。
+        goals:  [(value, color, name), ...] 要画的水平目标虚线。
+        少于 2 个点不画线。"""
+        if len(points) < 2:
             return None
-        W, H = 320.0, 130.0
+        W, H = 320.0, 140.0
         padx, top, bottom = 12.0, 18.0, 30.0
-        ws = [w for _, w in pts]
-        wmin, wmax = min(ws), max(ws)
+        ws = [w for _, w in points]
+        # y 轴范围要把目标线也算进去，否则目标线会画到图外
+        allvals = ws + [g[0] for g in goals if g[0] is not None]
+        wmin, wmax = min(allvals), max(allvals)
         span = (wmax - wmin) or 1.0
-        n = len(pts)
+        n = len(points)
         fx = lambda i: padx + (W - 2 * padx) * (i / (n - 1))
         fy = lambda w: top + (H - top - bottom) * (1 - (w - wmin) / span)
-        coords = [(fx(i), fy(w)) for i, (_, w) in enumerate(pts)]
+
+        # 目标虚线
+        goal_lines = ""
+        for value, color, name in goals:
+            if value is None:
+                continue
+            gy = fy(value)
+            goal_lines += (
+                f'<line x1="{padx}" y1="{gy:.1f}" x2="{W-padx}" y2="{gy:.1f}" '
+                f'stroke="{color}" stroke-width="1" stroke-dasharray="4 3"/>'
+                f'<text x="{W-padx:.0f}" y="{gy-3:.1f}" font-size="8" fill="{color}" '
+                f'text-anchor="end">{name} {value:g}</text>'
+            )
+
+        coords = [(fx(i), fy(w)) for i, (_, w) in enumerate(points)]
         poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
         dots = "".join(
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="var(--primary)"/>'
@@ -122,33 +139,39 @@ def create_app():
         return (
             f'<svg viewBox="0 0 {W:.0f} {H:.0f}" width="100%" '
             f'preserveAspectRatio="xMidYMid meet" style="display:block">'
+            f'{goal_lines}'
             f'<polyline points="{poly}" fill="none" stroke="var(--primary)" '
             f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
             f'{dots}'
             f'<text x="{padx}" y="11" font-size="9" fill="#7d877f">{wmax:g} kg</text>'
             f'<text x="{padx}" y="{H-16:.0f}" font-size="9" fill="#7d877f">{wmin:g} kg</text>'
-            f'<text x="{padx}" y="{H-3:.0f}" font-size="9" fill="#7d877f">'
-            f'{pts[0][0].strftime("%m/%d")}</text>'
+            f'<text x="{padx}" y="{H-3:.0f}" font-size="9" fill="#7d877f">{points[0][0]}</text>'
             f'<text x="{W-padx:.0f}" y="{H-3:.0f}" font-size="9" fill="#7d877f" '
-            f'text-anchor="end">{pts[-1][0].strftime("%m/%d")}</text>'
+            f'text-anchor="end">{points[-1][0]}</text>'
             f'</svg>'
         )
+
+    def get_or_create_profile(uid):
+        p = Profile.query.filter_by(user_id=uid).first()
+        if not p:
+            p = Profile(user_id=uid)
+            db.session.add(p)
+            db.session.commit()
+        return p
 
     @app.route("/")
     @login_required
     def dashboard():
         uid = current_user.id
         today = now_jst().date()
-        # 选中的日期：网址带 ?date=YYYY-MM-DD 就看那天，否则看今天
         sel = parse_date(request.args.get("date")) if request.args.get("date") else today
+        period = request.args.get("period", "month")  # week / month / year，默认一个月
 
-        # 选中日的摄入/消耗
         sel_meals = Meal.query.filter_by(user_id=uid, eaten_on=sel).all()
         sel_ex = Exercise.query.filter_by(user_id=uid, done_on=sel).all()
         calories_in = sum(m.calories for m in sel_meals)
         calories_out = sum(e.calories_burned for e in sel_ex)
 
-        # “截至选中日”的最新体重（那天没称就显示之前最近一次）
         day_end = datetime.combine(sel, time.max)
         latest_weight = (
             WeightLog.query.filter_by(user_id=uid)
@@ -157,18 +180,56 @@ def create_app():
             .first()
         )
 
-        # 体重趋势图（全部记录，从早到晚）
-        all_weights = (
+        profile = get_or_create_profile(uid)
+
+        # 本月目标是否需要提醒重设（跨月了）
+        this_ym = today.strftime("%Y-%m")
+        month_goal_outdated = (
+            profile.month_goal_weight is not None and profile.month_goal_ym != this_ym
+        )
+
+        # 离目标差多少
+        cur = latest_weight.weight_kg if latest_weight else None
+        diff_goal = round(cur - profile.goal_weight, 1) if (cur is not None and profile.goal_weight) else None
+        diff_month = round(cur - profile.month_goal_weight, 1) if (cur is not None and profile.month_goal_weight) else None
+
+        # ---- 体重趋势：按时段取数据 ----
+        now_dt = now_jst()
+        if period == "week":
+            start_dt = now_dt - timedelta(days=7)
+        elif period == "year":
+            start_dt = now_dt - timedelta(days=365)
+        else:
+            period = "month"
+            start_dt = now_dt - timedelta(days=30)
+
+        logs = (
             WeightLog.query.filter_by(user_id=uid)
+            .filter(WeightLog.recorded_at >= start_dt)
             .order_by(WeightLog.recorded_at.asc())
             .all()
         )
-        chart_svg = build_weight_chart(all_weights)
-        weight_change = None
-        if len(all_weights) >= 2:
-            weight_change = round(all_weights[-1].weight_kg - all_weights[0].weight_kg, 1)
 
-        # 最近 7 天（从选中日往前数）的每日摘要
+        if period == "year":
+            # 一年：按月平均，每月一个点
+            buckets = {}
+            for l in logs:
+                key = l.recorded_at.strftime("%Y-%m")
+                buckets.setdefault(key, []).append(l.weight_kg)
+            points = [
+                (k[2:].replace("-", "/"), round(sum(v) / len(v), 1))  # 标签如 26/06
+                for k, v in sorted(buckets.items())
+            ]
+        else:
+            points = [(l.recorded_at.strftime("%m/%d"), l.weight_kg) for l in logs]
+
+        goals = [
+            (profile.goal_weight, "#c2553f", "终极"),
+            (profile.month_goal_weight, "#246b5f", "本月"),
+        ]
+        chart_svg = build_weight_chart(points, goals)
+
+        # 最近 7 天摘要
         start = sel - timedelta(days=6)
         rng_meals = (
             Meal.query.filter_by(user_id=uid)
@@ -179,7 +240,7 @@ def create_app():
             .filter(Exercise.done_on >= start, Exercise.done_on <= sel).all()
         )
         recent = []
-        for i in range(0, 7):  # 选中日在最上面
+        for i in range(0, 7):
             d = sel - timedelta(days=i)
             cin = sum(m.calories for m in rng_meals if m.eaten_on == d)
             cout = sum(e.calories_burned for e in rng_ex if e.done_on == d)
@@ -196,9 +257,37 @@ def create_app():
             meal_count=len(sel_meals),
             ex_count=len(sel_ex),
             chart_svg=chart_svg,
-            weight_change=weight_change,
-            recent=recent,
+            period=period,
+            profile=profile,
+            diff_goal=diff_goal,
+            diff_month=diff_month,
+            month_goal_outdated=month_goal_outdated,
         )
+
+    @app.route("/profile", methods=["POST"])
+    @login_required
+    def profile_update():
+        p = get_or_create_profile(current_user.id)
+
+        def parse_num(name):
+            raw = request.form.get(name, "").strip()
+            if raw == "":
+                return None
+            try:
+                return float(raw)
+            except ValueError:
+                return None
+
+        p.height_cm = parse_num("height_cm")
+        p.goal_weight = parse_num("goal_weight")
+        new_month_goal = parse_num("month_goal_weight")
+        if new_month_goal != p.month_goal_weight:
+            # 本月目标有变动，记下是这个月设的
+            p.month_goal_weight = new_month_goal
+            p.month_goal_ym = now_jst().strftime("%Y-%m")
+        db.session.commit()
+        flash("个人资料已更新", "ok")
+        return redirect(url_for("dashboard"))
 
     # ============================== 体重 ==============================
     @app.route("/weight", methods=["GET", "POST"])
@@ -226,7 +315,36 @@ def create_app():
             .order_by(WeightLog.recorded_at.desc())
             .all()
         )
-        return render_template("weight.html", logs=logs, now=now_jst())
+
+        # BMI 和标准体重：都依赖身高
+        profile = Profile.query.filter_by(user_id=current_user.id).first()
+        height = profile.height_cm if profile else None
+        bmi = bmi_label = standard_weight = None
+        if height and logs:
+            h_m = height / 100.0
+            cur = logs[0].weight_kg
+            bmi = round(cur / (h_m * h_m), 1)
+            # 日本/WHO 常用对照
+            if bmi < 18.5:
+                bmi_label = "偏瘦"
+            elif bmi < 25:
+                bmi_label = "正常"
+            elif bmi < 30:
+                bmi_label = "偏胖"
+            else:
+                bmi_label = "肥胖"
+            standard_weight = round(22 * h_m * h_m, 1)  # BMI=22 对应的标准体重
+
+        return render_template(
+            "weight.html",
+            logs=logs,
+            now=now_jst(),
+            height=height,
+            bmi=bmi,
+            bmi_label=bmi_label,
+            standard_weight=standard_weight,
+            goal_weight=(profile.goal_weight if profile else None),
+        )
 
     @app.route("/weight/<int:log_id>/edit", methods=["GET", "POST"])
     @login_required
