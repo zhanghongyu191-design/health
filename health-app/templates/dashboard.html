@@ -68,6 +68,7 @@
   </div>
   {% if chart_svg %}
     {{ chart_svg | safe }}
+    <div id="ptinfo" class="hint" style="text-align:center;min-height:1.2em">轻触曲线上的点，看那天的体重</div>
     {% if period == 'year' %}<p class="hint">一年视图按每月平均值显示。</p>{% endif %}
   {% else %}
     <div class="empty">这个时段内记录不足 2 条，多记几次就能看到趋势了。</div>
@@ -99,23 +100,47 @@
 </div>
 
 <div class="card">
-  <h2>最近 7 天</h2>
+  <h2>最近体重记录</h2>
+  {% if recent_weights %}
   <ul class="list">
-    {% for r in recent %}
+    {% for w in recent_weights %}
     <li>
       <div>
-        <div class="item-main">{{ r.date.strftime('%m/%d') }}
-          <span class="item-sub" style="font-weight:400">（{{ ['周一','周二','周三','周四','周五','周六','周日'][r.date.weekday()] }}）</span>
-        </div>
-        <div class="item-sub">摄入 {{ r.cin }} · 消耗 {{ r.cout }} kcal</div>
+        <div class="item-main">{{ w.kg }} kg</div>
+        <div class="item-sub">{{ w.dt.strftime('%Y-%m-%d %H:%M') }}</div>
       </div>
       <div style="text-align:right">
-        <div class="item-main">{{ r.net }}</div>
-        <div class="item-sub">净 kcal</div>
+        {% if w.delta is not none %}
+          {% if w.delta < 0 %}
+            <div class="item-main" style="color:var(--primary)">↓ {{ -w.delta }}</div>
+          {% elif w.delta > 0 %}
+            <div class="item-main" style="color:var(--danger)">↑ {{ w.delta }}</div>
+          {% else %}
+            <div class="item-main">—</div>
+          {% endif %}
+          <div class="item-sub">较上次 kg</div>
+        {% else %}
+          <div class="item-sub">起点</div>
+        {% endif %}
       </div>
     </li>
     {% endfor %}
   </ul>
+  {% else %}
+  <div class="empty">还没有体重记录，去「体重」记一条吧。</div>
+  {% endif %}
 </div>
+
+<script>
+  (function () {
+    var info = document.getElementById('ptinfo');
+    if (!info) return;
+    document.querySelectorAll('svg .wpt').forEach(function (c) {
+      c.addEventListener('click', function () {
+        info.textContent = c.getAttribute('data-d') + ' · ' + c.getAttribute('data-w') + ' kg';
+      });
+    });
+  })();
+</script>
 
 {% endblock %}

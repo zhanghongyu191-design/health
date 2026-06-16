@@ -19,7 +19,7 @@
       <div class="label">你的目标</div>
     </div>
   </div>
-  <p class="hint">BMI = 体重 ÷ 身高²。标准体重按 BMI=22 计算，仅供参考。</p>
+  <p class="hint">基于 {{ bmi_date.strftime('%-m/%-d') if bmi_date else '' }} 的体重 {{ bmi_weight }} kg 计算。BMI = 体重 ÷ 身高²，标准体重按 BMI=22 计算，仅供参考。</p>
 </div>
 {% else %}
 <div class="card">
@@ -46,7 +46,16 @@
   </form>
 </div>
 <div class="card">
-  <h2>历史记录</h2>
+  <div class="date-row">
+    <span>历史记录</span>
+    <form method="get" style="margin:0">
+      <select name="period" onchange="this.form.submit()" style="width:auto">
+        {% for val, label in period_options %}
+        <option value="{{ val }}" {{ 'selected' if period==val }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
   {% if logs %}
   <ul class="list">
     {% for log in logs %}
@@ -65,7 +74,7 @@
     {% endfor %}
   </ul>
   {% else %}
-  <div class="empty">还没有记录，上面记一条吧。</div>
+  <div class="empty">这个时段没有记录。</div>
   {% endif %}
 </div>
 {% endblock %}

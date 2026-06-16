@@ -38,7 +38,16 @@
   <p class="hint">按你最新体重 {{ user_weight }} kg 估算，是大概值，可手动改。打字输入的自定义项目需要自己填消耗。</p>
 </div>
 <div class="card">
-  <h2>记录</h2>
+  <div class="date-row">
+    <span>记录</span>
+    <form method="get" style="margin:0">
+      <select name="period" onchange="this.form.submit()" style="width:auto">
+        {% for val, label in period_options %}
+        <option value="{{ val }}" {{ 'selected' if period==val }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
   {% if items %}
   <ul class="list">
     {% for e in items %}
@@ -56,7 +65,7 @@
     {% endfor %}
   </ul>
   {% else %}
-  <div class="empty">还没有记录。</div>
+  <div class="empty">这个时段没有记录。</div>
   {% endif %}
 </div>
 

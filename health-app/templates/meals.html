@@ -56,7 +56,16 @@
   <p class="hint">数值只是常见分量的大概值，按你实际吃的多少调整即可。</p>
 </div>
 <div class="card">
-  <h2>记录</h2>
+  <div class="date-row">
+    <span>记录</span>
+    <form method="get" style="margin:0">
+      <select name="period" onchange="this.form.submit()" style="width:auto">
+        {% for val, label in period_options %}
+        <option value="{{ val }}" {{ 'selected' if period==val }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
   {% if items %}
   <ul class="list">
     {% for m in items %}
@@ -74,7 +83,7 @@
     {% endfor %}
   </ul>
   {% else %}
-  <div class="empty">还没有记录。</div>
+  <div class="empty">这个时段没有记录。</div>
   {% endif %}
 </div>
 
