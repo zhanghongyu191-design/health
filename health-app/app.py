@@ -57,6 +57,30 @@ def create_app():
         except ValueError:
             return now_jst().date()
 
+    # 记录列表的"期间"筛选：返回 (起, 止) 两个日期，含两端；(None,None) 表示全部
+    PERIOD_OPTIONS = [
+        ("7d", "近7天"), ("30d", "近30天"), ("month", "本月"),
+        ("lastmonth", "上月"), ("all", "全部"),
+    ]
+
+    def period_range(period):
+        today = now_jst().date()
+        if period == "30d":
+            return today - timedelta(days=29), today
+        if period == "month":
+            return today.replace(day=1), today
+        if period == "lastmonth":
+            first_this = today.replace(day=1)
+            last_prev = first_this - timedelta(days=1)
+            return last_prev.replace(day=1), last_prev
+        if period == "all":
+            return None, None
+        return today - timedelta(days=6), today   # 默认近7天
+
+    def normalize_period(period):
+        valid = {k for k, _ in PERIOD_OPTIONS}
+        return period if period in valid else "7d"
+
     # ========================= 注册 / 登录 / 登出 =========================
     @app.route("/register", methods=["GET", "POST"])
     def register():
@@ -134,7 +158,9 @@ def create_app():
         poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
         dots = "".join(
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="var(--primary)"/>'
-            for x, y in coords
+            f'<circle class="wpt" cx="{x:.1f}" cy="{y:.1f}" r="8" fill="transparent" '
+            f'data-d="{lbl}" data-w="{w:g}" style="cursor:pointer"/>'
+            for (x, y), (lbl, w) in zip(coords, points)
         )
         return (
             f'<svg viewBox="0 0 {W:.0f} {H:.0f}" width="100%" '
@@ -229,22 +255,18 @@ def create_app():
         ]
         chart_svg = build_weight_chart(points, goals)
 
-        # 最近 7 天摘要
-        start = sel - timedelta(days=6)
-        rng_meals = (
-            Meal.query.filter_by(user_id=uid)
-            .filter(Meal.eaten_on >= start, Meal.eaten_on <= sel).all()
+        # 最近体重记录（最近 8 条，算出与上一条的升降）
+        rw = (
+            WeightLog.query.filter_by(user_id=uid)
+            .order_by(WeightLog.recorded_at.desc())
+            .limit(8)
+            .all()
         )
-        rng_ex = (
-            Exercise.query.filter_by(user_id=uid)
-            .filter(Exercise.done_on >= start, Exercise.done_on <= sel).all()
-        )
-        recent = []
-        for i in range(0, 7):
-            d = sel - timedelta(days=i)
-            cin = sum(m.calories for m in rng_meals if m.eaten_on == d)
-            cout = sum(e.calories_burned for e in rng_ex if e.done_on == d)
-            recent.append({"date": d, "cin": cin, "cout": cout, "net": cin - cout})
+        recent_weights = []
+        for i, w in enumerate(rw):
+            older = rw[i + 1] if i + 1 < len(rw) else None
+            delta = round(w.weight_kg - older.weight_kg, 1) if older else None
+            recent_weights.append({"dt": w.recorded_at, "kg": w.weight_kg, "delta": delta})
 
         return render_template(
             "dashboard.html",
@@ -262,6 +284,7 @@ def create_app():
             diff_goal=diff_goal,
             diff_month=diff_month,
             month_goal_outdated=month_goal_outdated,
+            recent_weights=recent_weights,
         )
 
     @app.route("/profile", methods=["POST"])
@@ -310,21 +333,31 @@ def create_app():
             flash("体重已记录", "ok")
             return redirect(url_for("weight"))
 
-        logs = (
+        # 期间筛选（只影响下面的明细列表）
+        period = normalize_period(request.args.get("period", "7d"))
+        start, end = period_range(period)
+        q = WeightLog.query.filter_by(user_id=current_user.id)
+        if start is not None:
+            q = q.filter(
+                WeightLog.recorded_at >= datetime.combine(start, time.min),
+                WeightLog.recorded_at <= datetime.combine(end, time.max),
+            )
+        logs = q.order_by(WeightLog.recorded_at.desc()).all()
+
+        # BMI / 标准体重：始终基于"全部记录里最新的一条"（不受期间筛选影响）
+        latest = (
             WeightLog.query.filter_by(user_id=current_user.id)
             .order_by(WeightLog.recorded_at.desc())
-            .all()
+            .first()
         )
-
-        # BMI 和标准体重：都依赖身高
         profile = Profile.query.filter_by(user_id=current_user.id).first()
         height = profile.height_cm if profile else None
-        bmi = bmi_label = standard_weight = None
-        if height and logs:
+        bmi = bmi_label = standard_weight = bmi_date = None
+        if height and latest:
             h_m = height / 100.0
-            cur = logs[0].weight_kg
+            cur = latest.weight_kg
             bmi = round(cur / (h_m * h_m), 1)
-            # 日本/WHO 常用对照
+            bmi_date = latest.recorded_at  # 这条体重是哪天的
             if bmi < 18.5:
                 bmi_label = "偏瘦"
             elif bmi < 25:
@@ -339,6 +372,10 @@ def create_app():
             "weight.html",
             logs=logs,
             now=now_jst(),
+            period=period,
+            period_options=PERIOD_OPTIONS,
+            bmi_date=bmi_date,
+            bmi_weight=(latest.weight_kg if latest else None),
             height=height,
             bmi=bmi,
             bmi_label=bmi_label,
@@ -398,12 +435,16 @@ def create_app():
             flash("已记录", "ok")
             return redirect(url_for("meals"))
 
-        items = (
-            Meal.query.filter_by(user_id=current_user.id)
-            .order_by(Meal.eaten_on.desc(), Meal.id.desc())
-            .all()
+        period = normalize_period(request.args.get("period", "7d"))
+        start, end = period_range(period)
+        q = Meal.query.filter_by(user_id=current_user.id)
+        if start is not None:
+            q = q.filter(Meal.eaten_on >= start, Meal.eaten_on <= end)
+        items = q.order_by(Meal.eaten_on.desc(), Meal.id.desc()).all()
+        return render_template(
+            "meals.html", items=items, today=now_jst().date(),
+            period=period, period_options=PERIOD_OPTIONS,
         )
-        return render_template("meals.html", items=items, today=now_jst().date())
 
     @app.route("/meals/<int:meal_id>/delete", methods=["POST"])
     @login_required
@@ -438,11 +479,12 @@ def create_app():
             flash("已记录", "ok")
             return redirect(url_for("exercise"))
 
-        items = (
-            Exercise.query.filter_by(user_id=current_user.id)
-            .order_by(Exercise.done_on.desc(), Exercise.id.desc())
-            .all()
-        )
+        period = normalize_period(request.args.get("period", "7d"))
+        start, end = period_range(period)
+        q = Exercise.query.filter_by(user_id=current_user.id)
+        if start is not None:
+            q = q.filter(Exercise.done_on >= start, Exercise.done_on <= end)
+        items = q.order_by(Exercise.done_on.desc(), Exercise.id.desc()).all()
         # 取最新体重，用来估算运动消耗；没有记录就先用 60kg 兜底
         lw = (
             WeightLog.query.filter_by(user_id=current_user.id)
@@ -451,7 +493,8 @@ def create_app():
         )
         user_weight = lw.weight_kg if lw else 60
         return render_template(
-            "exercise.html", items=items, today=now_jst().date(), user_weight=user_weight
+            "exercise.html", items=items, today=now_jst().date(), user_weight=user_weight,
+            period=period, period_options=PERIOD_OPTIONS,
         )
 
     @app.route("/exercise/<int:ex_id>/delete", methods=["POST"])
