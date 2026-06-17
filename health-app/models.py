@@ -42,6 +42,7 @@ class WeightLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     weight_kg = db.Column(db.Float, nullable=False)
+    waist_cm = db.Column(db.Float)   # 腰围 cm，选填
     recorded_at = db.Column(db.DateTime, nullable=False, default=now_jst)
     note = db.Column(db.String(200))
 

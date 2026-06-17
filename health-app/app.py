@@ -81,6 +81,21 @@ def create_app():
         valid = {k for k, _ in PERIOD_OPTIONS}
         return period if period in valid else "7d"
 
+    # 首页 / 体重页统一的时段（本周内 / 本月内 / 一年内）
+    TREND_OPTIONS = [("week", "本周内"), ("month", "本月内"), ("year", "一年内")]
+
+    def trend_range(period):
+        today = now_jst().date()
+        if period == "week":
+            return today - timedelta(days=today.weekday()), today   # 本周一 ~ 今天
+        if period == "year":
+            return today - timedelta(days=365), today
+        return today.replace(day=1), today                          # 本月1号 ~ 今天
+
+    def normalize_trend(period):
+        valid = {k for k, _ in TREND_OPTIONS}
+        return period if period in valid else "month"
+
     # ========================= 注册 / 登录 / 登出 =========================
     @app.route("/register", methods=["GET", "POST"])
     def register():
@@ -125,15 +140,14 @@ def create_app():
     # ============================== 首页小结 ==============================
     def build_weight_chart(points, goals):
         """纯 SVG 折线图。
-        points: [(label, weight), ...] 已按时间排好，label 是 x 轴两端的文字。
-        goals:  [(value, color, name), ...] 要画的水平目标虚线。
+        points: [(label, weight, show_label), ...] 按时间排好。show_label=True 的点会标注"日期+体重"。
+        goals:  [(value, color, name), ...] 水平目标虚线。
         少于 2 个点不画线。"""
         if len(points) < 2:
             return None
-        W, H = 320.0, 140.0
-        padx, top, bottom = 12.0, 18.0, 30.0
-        ws = [w for _, w in points]
-        # y 轴范围要把目标线也算进去，否则目标线会画到图外
+        W, H = 320.0, 150.0
+        padx, top, bottom = 14.0, 26.0, 30.0
+        ws = [w for _, w, _ in points]
         allvals = ws + [g[0] for g in goals if g[0] is not None]
         wmin, wmax = min(allvals), max(allvals)
         span = (wmax - wmin) or 1.0
@@ -141,7 +155,6 @@ def create_app():
         fx = lambda i: padx + (W - 2 * padx) * (i / (n - 1))
         fy = lambda w: top + (H - top - bottom) * (1 - (w - wmin) / span)
 
-        # 目标虚线
         goal_lines = ""
         for value, color, name in goals:
             if value is None:
@@ -154,26 +167,35 @@ def create_app():
                 f'text-anchor="end">{name} {value:g}</text>'
             )
 
-        coords = [(fx(i), fy(w)) for i, (_, w) in enumerate(points)]
+        coords = [(fx(i), fy(w)) for i, (_, w, _) in enumerate(points)]
         poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
-        dots = "".join(
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="var(--primary)"/>'
-            f'<circle class="wpt" cx="{x:.1f}" cy="{y:.1f}" r="8" fill="transparent" '
-            f'data-d="{lbl}" data-w="{w:g}" style="cursor:pointer"/>'
-            for (x, y), (lbl, w) in zip(coords, points)
-        )
+
+        dots = ""
+        labels = ""
+        for i, ((x, y), (lbl, w, show)) in enumerate(zip(coords, points)):
+            dots += (
+                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="var(--primary)"/>'
+                f'<circle class="wpt" cx="{x:.1f}" cy="{y:.1f}" r="8" fill="transparent" '
+                f'data-d="{lbl}" data-w="{w:g}" style="cursor:pointer"/>'
+            )
+            if show:
+                # 数值标在点上方，两端的点把文字对齐方式调一下，避免出界
+                anchor = "start" if i == 0 else ("end" if i == n - 1 else "middle")
+                ty = y - 6 if y > top + 12 else y + 12
+                labels += (
+                    f'<text x="{x:.1f}" y="{ty:.1f}" font-size="7.5" fill="var(--ink)" '
+                    f'text-anchor="{anchor}">{w:g}</text>'
+                    f'<text x="{x:.1f}" y="{ty+8:.1f}" font-size="6.5" fill="#9aa39c" '
+                    f'text-anchor="{anchor}">{lbl}</text>'
+                )
+
         return (
             f'<svg viewBox="0 0 {W:.0f} {H:.0f}" width="100%" '
             f'preserveAspectRatio="xMidYMid meet" style="display:block">'
             f'{goal_lines}'
             f'<polyline points="{poly}" fill="none" stroke="var(--primary)" '
             f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
-            f'{dots}'
-            f'<text x="{padx}" y="11" font-size="9" fill="#7d877f">{wmax:g} kg</text>'
-            f'<text x="{padx}" y="{H-16:.0f}" font-size="9" fill="#7d877f">{wmin:g} kg</text>'
-            f'<text x="{padx}" y="{H-3:.0f}" font-size="9" fill="#7d877f">{points[0][0]}</text>'
-            f'<text x="{W-padx:.0f}" y="{H-3:.0f}" font-size="9" fill="#7d877f" '
-            f'text-anchor="end">{points[-1][0]}</text>'
+            f'{dots}{labels}'
             f'</svg>'
         )
 
@@ -190,8 +212,16 @@ def create_app():
     def dashboard():
         uid = current_user.id
         today = now_jst().date()
-        sel = parse_date(request.args.get("date")) if request.args.get("date") else today
-        period = request.args.get("period", "month")  # week / month / year，默认一个月
+        period = normalize_trend(request.args.get("period", "month"))
+
+        # 默认日期 = 最新一条体重的日期（今天可能还没记），没有记录就用今天
+        newest = (
+            WeightLog.query.filter_by(user_id=uid)
+            .order_by(WeightLog.recorded_at.desc())
+            .first()
+        )
+        default_date = newest.recorded_at.date() if newest else today
+        sel = parse_date(request.args.get("date")) if request.args.get("date") else default_date
 
         sel_meals = Meal.query.filter_by(user_id=uid, eaten_on=sel).all()
         sel_ex = Exercise.query.filter_by(user_id=uid, done_on=sel).all()
@@ -199,55 +229,66 @@ def create_app():
         calories_out = sum(e.calories_burned for e in sel_ex)
 
         day_end = datetime.combine(sel, time.max)
+        day_start = datetime.combine(sel, time.min)
         latest_weight = (
             WeightLog.query.filter_by(user_id=uid)
             .filter(WeightLog.recorded_at <= day_end)
             .order_by(WeightLog.recorded_at.desc())
             .first()
         )
+        # 选中这天本身有没有体重记录（没有就提示）
+        has_weight_on_sel = (
+            WeightLog.query.filter_by(user_id=uid)
+            .filter(WeightLog.recorded_at >= day_start, WeightLog.recorded_at <= day_end)
+            .first()
+            is not None
+        )
 
         profile = get_or_create_profile(uid)
 
-        # 本月目标是否需要提醒重设（跨月了）
         this_ym = today.strftime("%Y-%m")
         month_goal_outdated = (
             profile.month_goal_weight is not None and profile.month_goal_ym != this_ym
         )
 
-        # 离目标差多少
         cur = latest_weight.weight_kg if latest_weight else None
         diff_goal = round(cur - profile.goal_weight, 1) if (cur is not None and profile.goal_weight) else None
         diff_month = round(cur - profile.month_goal_weight, 1) if (cur is not None and profile.month_goal_weight) else None
 
-        # ---- 体重趋势：按时段取数据 ----
-        now_dt = now_jst()
-        if period == "week":
-            start_dt = now_dt - timedelta(days=7)
-        elif period == "year":
-            start_dt = now_dt - timedelta(days=365)
-        else:
-            period = "month"
-            start_dt = now_dt - timedelta(days=30)
-
+        # ---- 体重趋势 + 最近体重记录：共用同一个时段 ----
+        start_d, end_d = trend_range(period)
+        start_dt = datetime.combine(start_d, time.min)
+        end_dt = datetime.combine(end_d, time.max)
         logs = (
             WeightLog.query.filter_by(user_id=uid)
-            .filter(WeightLog.recorded_at >= start_dt)
+            .filter(WeightLog.recorded_at >= start_dt, WeightLog.recorded_at <= end_dt)
             .order_by(WeightLog.recorded_at.asc())
             .all()
         )
 
         if period == "year":
-            # 一年：按月平均，每月一个点
+            # 一年：按月平均，每月一个点；每个点都标
             buckets = {}
             for l in logs:
                 key = l.recorded_at.strftime("%Y-%m")
                 buckets.setdefault(key, []).append(l.weight_kg)
             points = [
-                (k[2:].replace("-", "/"), round(sum(v) / len(v), 1))  # 标签如 26/06
+                (k[2:].replace("-", "/"), round(sum(v) / len(v), 1), True)
                 for k, v in sorted(buckets.items())
             ]
         else:
-            points = [(l.recorded_at.strftime("%m/%d"), l.weight_kg) for l in logs]
+            raw = [(l.recorded_at.strftime("%m/%d"), l.weight_kg) for l in logs]
+            npts = len(raw)
+            if period == "week" or npts <= 8:
+                # 本周或点数不多：每个点都标
+                points = [(lbl, w, True) for lbl, w in raw]
+            else:
+                # 本月且点多：自动隔几个标一个（约最多标 8 个），首尾必标
+                step = max(1, round(npts / 8))
+                points = [
+                    (lbl, w, (i % step == 0 or i == npts - 1))
+                    for i, (lbl, w) in enumerate(raw)
+                ]
 
         goals = [
             (profile.goal_weight, "#c2553f", "终极"),
@@ -255,23 +296,22 @@ def create_app():
         ]
         chart_svg = build_weight_chart(points, goals)
 
-        # 最近体重记录（最近 8 条，算出与上一条的升降）
-        rw = (
-            WeightLog.query.filter_by(user_id=uid)
-            .order_by(WeightLog.recorded_at.desc())
-            .limit(8)
-            .all()
-        )
+        # 最近体重记录：同一时段内，最新在上，带升降和腰围
+        rw = list(reversed(logs))  # 改成倒序（新→旧）
         recent_weights = []
         for i, w in enumerate(rw):
             older = rw[i + 1] if i + 1 < len(rw) else None
             delta = round(w.weight_kg - older.weight_kg, 1) if older else None
-            recent_weights.append({"dt": w.recorded_at, "kg": w.weight_kg, "delta": delta})
+            recent_weights.append({
+                "dt": w.recorded_at, "kg": w.weight_kg,
+                "waist": w.waist_cm, "delta": delta,
+            })
 
         return render_template(
             "dashboard.html",
             sel=sel,
             is_today=(sel == today),
+            has_weight_on_sel=has_weight_on_sel,
             latest_weight=latest_weight,
             calories_in=calories_in,
             calories_out=calories_out,
@@ -280,6 +320,7 @@ def create_app():
             ex_count=len(sel_ex),
             chart_svg=chart_svg,
             period=period,
+            trend_options=TREND_OPTIONS,
             profile=profile,
             diff_goal=diff_goal,
             diff_month=diff_month,
@@ -313,6 +354,15 @@ def create_app():
         return redirect(url_for("dashboard"))
 
     # ============================== 体重 ==============================
+    def parse_opt_float(name):
+        raw = request.form.get(name, "").strip()
+        if raw == "":
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
     @app.route("/weight", methods=["GET", "POST"])
     @login_required
     def weight():
@@ -325,6 +375,7 @@ def create_app():
             log = WeightLog(
                 user_id=current_user.id,
                 weight_kg=kg,
+                waist_cm=parse_opt_float("waist_cm"),
                 recorded_at=parse_datetime(request.form.get("recorded_at")),
                 note=request.form.get("note", "").strip(),
             )
@@ -333,16 +384,18 @@ def create_app():
             flash("体重已记录", "ok")
             return redirect(url_for("weight"))
 
-        # 期间筛选（只影响下面的明细列表）
-        period = normalize_period(request.args.get("period", "7d"))
-        start, end = period_range(period)
-        q = WeightLog.query.filter_by(user_id=current_user.id)
-        if start is not None:
-            q = q.filter(
+        # 期间筛选（本周/本月/一年，跟首页统一）
+        period = normalize_trend(request.args.get("period", "week"))
+        start, end = trend_range(period)
+        logs = (
+            WeightLog.query.filter_by(user_id=current_user.id)
+            .filter(
                 WeightLog.recorded_at >= datetime.combine(start, time.min),
                 WeightLog.recorded_at <= datetime.combine(end, time.max),
             )
-        logs = q.order_by(WeightLog.recorded_at.desc()).all()
+            .order_by(WeightLog.recorded_at.desc())
+            .all()
+        )
 
         # BMI / 标准体重：始终基于"全部记录里最新的一条"（不受期间筛选影响）
         latest = (
@@ -373,8 +426,9 @@ def create_app():
             logs=logs,
             now=now_jst(),
             period=period,
-            period_options=PERIOD_OPTIONS,
+            period_options=TREND_OPTIONS,
             bmi_date=bmi_date,
+            latest_weight=(latest.weight_kg if latest else None),
             bmi_weight=(latest.weight_kg if latest else None),
             height=height,
             bmi=bmi,
@@ -397,6 +451,7 @@ def create_app():
                 flash("体重要填数字", "error")
                 return redirect(url_for("weight_edit", log_id=log_id))
             log.recorded_at = parse_datetime(request.form.get("recorded_at"))
+            log.waist_cm = parse_opt_float("waist_cm")
             log.note = request.form.get("note", "").strip()
             db.session.commit()
             flash("已更新", "ok")
