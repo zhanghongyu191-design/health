@@ -27,6 +27,9 @@
     </div>
   </div>
   <div class="net-line">当日净摄入 <b>{{ net }}</b> kcal（摄入 − 消耗）</div>
+  {% if not has_weight_on_sel %}
+  <div class="hint" style="text-align:center;color:var(--danger)">这天没有体重记录（上方体重为之前最近一次）</div>
+  {% endif %}
 </div>
 
 {# 离目标差多少 #}
@@ -60,9 +63,9 @@
     <form method="get" style="margin:0">
       <input type="hidden" name="date" value="{{ sel.strftime('%Y-%m-%d') }}">
       <select name="period" onchange="this.form.submit()" style="width:auto">
-        <option value="week" {{ 'selected' if period=='week' }}>本周内</option>
-        <option value="month" {{ 'selected' if period=='month' }}>一个月内</option>
-        <option value="year" {{ 'selected' if period=='year' }}>一年内</option>
+        {% for val, label in trend_options %}
+        <option value="{{ val }}" {{ 'selected' if period==val }}>{{ label }}</option>
+        {% endfor %}
       </select>
     </form>
   </div>
@@ -101,6 +104,7 @@
 
 <div class="card">
   <h2>最近体重记录</h2>
+  <p class="hint" style="margin-top:-6px">跟随上方所选时段。</p>
   {% if recent_weights %}
   <ul class="list">
     {% for w in recent_weights %}
@@ -108,6 +112,7 @@
       <div>
         <div class="item-main">{{ w.kg }} kg</div>
         <div class="item-sub">{{ w.dt.strftime('%Y-%m-%d %H:%M') }}</div>
+        <div class="item-sub">腰围 {% if w.waist is not none %}{{ w.waist }} cm{% else %}—{% endif %}</div>
       </div>
       <div style="text-align:right">
         {% if w.delta is not none %}
@@ -127,7 +132,7 @@
     {% endfor %}
   </ul>
   {% else %}
-  <div class="empty">还没有体重记录，去「体重」记一条吧。</div>
+  <div class="empty">这个时段没有体重记录。</div>
   {% endif %}
 </div>
 

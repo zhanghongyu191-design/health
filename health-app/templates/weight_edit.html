@@ -7,6 +7,8 @@
   <form method="post" action="{{ url_for('weight_edit', log_id=log.id) }}">
     <label>体重 (kg)</label>
     <input type="number" step="0.1" name="weight_kg" value="{{ log.weight_kg }}" inputmode="decimal" required>
+    <label>腰围 (cm，可空)</label>
+    <input type="number" step="0.1" name="waist_cm" value="{{ log.waist_cm if log.waist_cm is not none else '' }}" inputmode="decimal" placeholder="选填">
     <label>时间</label>
     <input type="datetime-local" name="recorded_at" value="{{ log.recorded_at.strftime('%Y-%m-%dT%H:%M') }}">
     <label>备注</label>
