@@ -64,12 +64,33 @@ body {
 /* 表单 */
 label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 5px; }
 input, select {
-  width: 100%; max-width: 100%; padding: 11px 12px;
+  -webkit-appearance: none;   /* 关键：去掉 iOS 给输入框套的原生样式，正是它把日期框撑出边缘 */
+  appearance: none;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+  display: block;             /* 让框按块级铺满，不按内部内容宽度撑开 */
+  width: 100%; max-width: 100%; min-width: 0;
+  padding: 11px 12px;
   border: 1px solid var(--line); border-radius: 10px;
   font-size: 16px; background: #fff; color: var(--ink);
   font-family: inherit;
 }
+/* 日期/时间框在 iOS 上容易按"内部最小宽度"撑开，这里再压一道 */
+input[type="date"], input[type="datetime-local"], input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  width: 100%;
+}
 input:focus, select:focus { outline: 2px solid var(--primary); border-color: var(--primary); }
+
+/* select 去掉原生样式后会丢箭头，这里补一个自定义下拉箭头 */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%237d877f' d='M0 0h10L5 7z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
 .row { display: flex; gap: 10px; }
 .row > div { flex: 1; min-width: 0; }  /* min-width:0 防止手机上日期/下拉框撑破右边 */
 
