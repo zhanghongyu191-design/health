@@ -75,3 +75,7 @@ class Profile(db.Model):
     goal_weight = db.Column(db.Float)          # 终极目标体重 kg
     month_goal_weight = db.Column(db.Float)    # 本月目标体重 kg
     month_goal_ym = db.Column(db.String(7))    # 本月目标是哪个月设的，如 "2026-06"
+    waist_base_cm = db.Column(db.Float)        # 起始腰围 cm（累计变化的基准）
+    waist_base_date = db.Column(db.Date)       # 起始日期：这天及以后的腰围才算累计变化
+    base_waist_cm = db.Column(db.Float)        # 起始腰围 cm（腰围累计变化的基准）
+    base_waist_date = db.Column(db.Date)       # 起始日期：当天及以后的腰围才算累计变化

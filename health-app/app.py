@@ -207,6 +207,21 @@ def create_app():
             db.session.commit()
         return p
 
+    def waist_cum_cell(profile, wdate, wcm):
+        """腰围相对'起始腰围'的累计变化。
+        返回 None=不显示（没设起始基准）；('dash',None)=显示"—"；
+        ('down',x)/('up',x)=减/增 x cm；('base',0)=正好等于基准。"""
+        if not profile or profile.waist_base_cm is None or profile.waist_base_date is None:
+            return None
+        if wcm is None or wdate < profile.waist_base_date:
+            return ("dash", None)
+        d = round(wcm - profile.waist_base_cm, 1)
+        if d < 0:
+            return ("down", -d)
+        if d > 0:
+            return ("up", d)
+        return ("base", 0)
+
     @app.route("/")
     @login_required
     def dashboard():
@@ -305,6 +320,7 @@ def create_app():
             recent_weights.append({
                 "dt": w.recorded_at, "kg": w.weight_kg,
                 "waist": w.waist_cm, "delta": delta,
+                "waist_cum": waist_cum_cell(profile, w.recorded_at.date(), w.waist_cm),
             })
 
         return render_template(
@@ -344,6 +360,8 @@ def create_app():
 
         p.height_cm = parse_num("height_cm")
         p.goal_weight = parse_num("goal_weight")
+        p.waist_base_cm = parse_num("waist_base_cm")
+        p.waist_base_date = parse_date(request.form.get("waist_base_date")) if request.form.get("waist_base_date") else None
         new_month_goal = parse_num("month_goal_weight")
         if new_month_goal != p.month_goal_weight:
             # 本月目标有变动，记下是这个月设的
@@ -404,6 +422,8 @@ def create_app():
             .first()
         )
         profile = Profile.query.filter_by(user_id=current_user.id).first()
+        for l in logs:
+            l.waist_cum = waist_cum_cell(profile, l.recorded_at.date(), l.waist_cm)
         height = profile.height_cm if profile else None
         bmi = bmi_label = standard_weight = bmi_date = None
         if height and latest:
