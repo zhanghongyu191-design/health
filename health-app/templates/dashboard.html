@@ -97,9 +97,21 @@
                value="{{ profile.month_goal_weight if profile.month_goal_weight is not none else '' }}">
       </div>
     </div>
+    <div class="row">
+      <div>
+        <label>起始腰围 (cm)</label>
+        <input type="number" step="0.1" name="waist_base_cm" inputmode="decimal"
+               value="{{ profile.waist_base_cm if profile.waist_base_cm is not none else '' }}" placeholder="基准">
+      </div>
+      <div>
+        <label>起始日期</label>
+        <input type="date" name="waist_base_date"
+               value="{{ profile.waist_base_date.strftime('%Y-%m-%d') if profile.waist_base_date else '' }}">
+      </div>
+    </div>
     <button class="btn" type="submit">保存资料</button>
   </form>
-  <p class="hint">填了身高后，体重页会自动算 BMI 和标准体重。</p>
+  <p class="hint">填了身高后，体重页会自动算 BMI 和标准体重。腰围会跟"起始腰围"比，显示累计变化（起始日期当天及以后才算）。</p>
 </div>
 
 <div class="card">
@@ -112,7 +124,7 @@
       <div>
         <div class="item-main">{{ w.kg }} kg</div>
         <div class="item-sub">{{ w.dt.strftime('%Y-%m-%d %H:%M') }}</div>
-        <div class="item-sub">腰围 {% if w.waist is not none %}{{ w.waist }} cm{% else %}—{% endif %}</div>
+        <div class="item-sub">腰围 {% if w.waist is not none %}{{ w.waist }} cm{% else %}—{% endif %}{% if w.waist_cum %}{% set wc = w.waist_cum %}{% if wc[0]=='dash' %} · 较起始 —{% elif wc[0]=='down' %} · <span style="color:var(--primary)">较起始 ↓ {{ wc[1] }} cm</span>{% elif wc[0]=='up' %} · <span style="color:var(--danger)">较起始 ↑ {{ wc[1] }} cm</span>{% else %} · 起始基准{% endif %}{% endif %}</div>
       </div>
       <div style="text-align:right">
         {% if w.delta is not none %}

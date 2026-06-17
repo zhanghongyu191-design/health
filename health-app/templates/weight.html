@@ -69,7 +69,7 @@
       <div>
         <div class="item-main">{{ log.weight_kg }} kg</div>
         <div class="item-sub">{{ log.recorded_at.strftime('%Y-%m-%d %H:%M') }}{% if log.note %} · {{ log.note }}{% endif %}</div>
-        <div class="item-sub">腰围 {% if log.waist_cm is not none %}{{ log.waist_cm }} cm{% else %}—{% endif %}</div>
+        <div class="item-sub">腰围 {% if log.waist_cm is not none %}{{ log.waist_cm }} cm{% else %}—{% endif %}{% if log.waist_cum %}{% set wc = log.waist_cum %}{% if wc[0]=='dash' %} · 较起始 —{% elif wc[0]=='down' %} · <span style="color:var(--primary)">较起始 ↓ {{ wc[1] }} cm</span>{% elif wc[0]=='up' %} · <span style="color:var(--danger)">较起始 ↑ {{ wc[1] }} cm</span>{% else %} · 起始基准{% endif %}{% endif %}</div>
       </div>
       <div class="item-actions">
         <a href="{{ url_for('weight_edit', log_id=log.id) }}">改</a>
